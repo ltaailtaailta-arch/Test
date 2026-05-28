@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rabbit Adventure - iPad Touch Edition</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <style>
+        body { display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background-color: #5C94FC; font-family: 'Microsoft YaHei', sans-serif; overflow: hidden; touch-action: none; }
+        .ui { color: white; text-align: center; text-shadow: 2px 2px 0px #000; margin-top: 5px; }
+
+        /* 游戏画布响应式缩放，完美适配iPad屏幕 */
+        canvas { border: 4px solid #333; background-color: #5C94FC; box-shadow: 0 0 20px rgba(0,0,0,0.5); border-radius: 8px; max-width: 95vw; max-height: 60vh; height: auto; }
+
+        button.music-btn { background-color: #e74c3c; border: 2px solid #fff; color: white; padding: 6px 12px; font-size: 14px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+
+        /* iPad 虚拟手柄样式 */
+        #touchGamepad { display: flex; justify-content: space-between; width: 90vw; max-width: 800px; margin-top: 15px; padding-bottom: 20px; user-select: none; -webkit-user-select: none; }
+        .dir-container { display: flex; gap: 15px; }
+        .action-container { display: flex; }
+
+        .game-btn { width: 70px; height: 70px; background-color: rgba(255, 255, 255, 0.3); border: 3px solid #fff; border-radius: 50%; color: white; font-size: 30px; font-weight: bold; display: flex; justify-content: center; align-items: center; box-shadow: 0 4px 6px rgba(0,0,0,0.3); touch-action: none; }
+        .game-btn:active { background-color: rgba(255, 255, 255, 0.6); transform: scale(0.95); }
+        #btnJump { width: 90px; height: 90px; font-size: 18px; background-color: rgba(231, 76, 60, 0.5); border-color: #e74c3c; margin-top: -10px; }
+        #btnJump:active { background-color: rgba(231, 76, 60, 0.8); }
+    </style>
+</head>
+<body>
+    <div class="ui">
+        <h3 id="levelDisplay" style="margin: 5px 0;">第 1 关: 蘑菇王国边缘</h3>
+        <div style="margin-bottom: 5px;">
+            <button onclick="toggleMusic()" class="music-btn" id="musicBtn">🎵 播放音乐</button>
+        </div>
+    </div>
+
+    <canvas id="gameCanvas"></canvas>
+
+    <div id="touchGamepad">
+        <div class="dir-container">
+            <div class="game-btn" id="btnLeft">◀</div>
+            <div class="game-btn" id="btnRight">▶</div>
+        </div>
+        <div class="action-container">
+            <div class="game-btn" id="btnJump">JUMP</div>
+        </div>
+    </div>
+
+    <audio id="bgmAudio" loop>
+        <source src="bgm.mp3" type="audio/mpeg">
+    </audio>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let currentLevel = 0;
+let score = 0;
+let keys = {};
+let gameActive = true;
+let cameraX = 0;
+
+const bgm = document.getElementById("bgmAudio");
+let isMusicPlaying = false;
+function toggleMusic() {
+    if (isMusicPlaying) {
+        bgm.pause();
+        document.getElementById("musicBtn").innerText = "🎵 播放音乐";
+    } else {
+        bgm.play();
+        document.getElementById("musicBtn").innerText = "⏸️ 暂停音乐";
+    }
+    isMusicPlaying = !isMusicPlaying;
+}
+
+// 马里奥风格的关卡数据
+const levelData = [
+    {
+        title: "第 1 关: 蘑菇王国边缘",
+        width: 1400, height: 430,
+        platforms: [
+            {x:0, y:390, w:500, h:40, type: 'ground'},
+            {x:650, y:390, w:750, h:40, type: 'ground'},
+            {x:300, y:260, w:40, h:40, type: 'block'},
+            {x:340, y:260, w:40, h:40, type: 'block'},
+            {x:380, y:260, w:40, h:40, type: 'block'},
+            {x:800, y:310, w:60, h:80, type: 'pipe'},
+        ],
+        carrots: [{x:345, y:210}, {x:815, y:270}, {x:1100, y:350}],
+        traps: [],
+        cannons: []
+    },
+    {
+        title: "第 2 关: 砖块跳跃",
+        width: 1800, height: 430,
+        platforms: [
+            {x:0, y:390, w:400, h:40, type: 'ground'},
+            {x:450, y:310, w:60, h:80, type: 'pipe'},
+            {x:650, y:390, w:300, h:40, type: 'ground'},
+            {x:750, y:230, w:40, h:40, type: 'block'},
+            {x:850, y:180, w:40, h:40, type: 'block'},
+            {x:1100, y:390, w:700, h:40, type: 'ground'},
+            {x:1300, y:290, w:60, h:100, type: 'pipe'},
+        ],
+        carrots: [{x:465, y:270}, {x:855, y:130}, {x:1315, y:240}, {x:1600, y:350}],
+        traps: [{x:700, y:370, w:50, h:20}],
+        cannons: [{x:1200, y:350, dir: -1, lastShot: 0}]
+    },
+    {
+        title: "第 3 关: 危险防线",
+        width: 2200, height: 450,
+        platforms: [
+            {x:0, y:410, w:400, h:40, type: 'ground'},
+            {x:250, y:270, w:120, h:40, type: 'block'},
+            {x:500, y:410, w:200, h:40, type: 'ground'},
+            {x:600, y:290, w:60, h:120, type: 'pipe'},
+            {x:850, y:410, w:300, h:40, type: 'ground'},
+            {x:950, y:250, w:40, h:40, type: 'block'},
+            {x:1000, y:250, w:40, h:40, type: 'block'},
+            {x:1050, y:250, w:40, h:40, type: 'block'},
+            {x:1350, y:410, w:850, h:40, type: 'ground'},
+            {x:1450, y:310, w:60, h:100, type: 'pipe'},
+            {x:1750, y:210, w:60, h:200, type: 'pipe'},
+        ],
+        carrots: [{x:290, y:220}, {x:615, y:240}, {x:1005, y:200}, {x:1465, y:260}, {x:1765, y:160}, {x:2050, y:370}],
+        traps: [{x:500, y:390, w:80, h:20}, {x:1200, y:390, w:100, h:20}],
+        cannons: [{x:850, y:370, dir: -1, lastShot: 0}, {x:1900, y:370, dir: -1, lastShot: 0}]
+    }
+];
+
+let bunny = { x: 50, y: 200, w: 40, h: 40, dx: 0, dy: 0, speed: 5, jump: 13, grounded: false, facingLeft: false };
+let bullets = [];
+let levelCarrots = [];
+
+function initLevel(index) {
+    const data = levelData[index];
+    canvas.width = 800; // 内部逻辑分辨率固定
+    canvas.height = data.height;
+    document.getElementById("levelDisplay").innerText = data.title;
+
+    bunny.x = 50;
+    bunny.y = 50;
+    bunny.dy = 0;
+    bunny.dx = 0;
+    bunny.facingLeft = false;
+
+    keys = {};
+    levelCarrots = data.carrots.map(c => ({...c, w:30, h:30, collected: false}));
+    bullets = [];
+    data.cannons.forEach(c => c.lastShot = Date.now());
+    gameActive = true;
+}
+
+// 1. 电脑键盘事件支持
+window.addEventListener("keydown", (e) => {
+    keys[e.code] = true;
+    if (e.code === "Space" && bunny.grounded && gameActive) {
+        bunny.dy = -bunny.jump;
+        bunny.grounded = false;
+        e.preventDefault();
+    }
+});
+window.addEventListener("keyup", (e) => keys[e.code] = false);
+
+// 2. iPad 触控手柄事件支持 (核心升级)
+function setupTouchButton(elementId, keyCode) {
+    const btn = document.getElementById(elementId);
+    btn.addEventListener("touchstart", (e) => {
+        keys[keyCode] = true;
+        e.preventDefault(); // 阻止iPad页面放大或滚动
+    }, { passive: false });
+
+    btn.addEventListener("touchend", (e) => {
+        keys[keyCode] = false;
+        e.preventDefault();
+    }, { passive: false });
+}
+
+setupTouchButton("btnLeft", "ArrowLeft");
+setupTouchButton("btnRight", "ArrowRight");
+
+document.getElementById("btnJump").addEventListener("touchstart", (e) => {
+    if (bunny.grounded && gameActive) {
+        bunny.dy = -bunny.jump;
+        bunny.grounded = false;
+    }
+    e.preventDefault();
+}, { passive: false });
+
+function update() {
+    if (!gameActive) return;
+    const current = levelData[currentLevel];
+
+    if (keys["ArrowLeft"] && !keys["ArrowRight"]) {
+        bunny.dx = -bunny.speed;
+        bunny.facingLeft = true;
+    } else if (keys["ArrowRight"] && !keys["ArrowLeft"]) {
+        bunny.dx = bunny.speed;
+        bunny.facingLeft = false;
+    } else {
+        bunny.dx = 0;
+    }
+
+    bunny.dy += 0.48;
+    bunny.x += bunny.dx;
+    bunny.y += bunny.dy;
+    bunny.grounded = false;
+
+    // 平台碰撞
+    current.platforms.forEach(p => {
+        if (bunny.x < p.x + p.w && bunny.x + bunny.w > p.x && bunny.y < p.y + p.h && bunny.y + bunny.h > p.y) {
+            if (bunny.dy > 0 && bunny.y + bunny.h - bunny.dy <= p.y + 10) {
+                bunny.grounded = true;
+                bunny.dy = 0;
+                bunny.y = p.y - bunny.h;
+            }
+            else if (bunny.dy < 0 && bunny.y - bunny.dy >= p.y + p.h - 10) {
+                bunny.dy = 0;
+                bunny.y = p.y + p.h;
+            }
+            else {
+                if (bunny.dx > 0) bunny.x = p.x - bunny.w;
+                if (bunny.dx < 0) bunny.x = p.x + p.w;
+            }
+        }
+    });
+
+    if (bunny.x < 0) bunny.x = 0;
+    if (bunny.x + bunny.w > current.width) bunny.x = current.width - bunny.w;
+
+    current.traps.forEach(t => {
+        if (bunny.x < t.x + t.w && bunny.x + bunny.w > t.x && bunny.y < t.y + t.h && bunny.y + bunny.h > t.y) {
+            resetLevel("哎呀！被陷阱伤到了！");
+        }
+    });
+
+    if (bunny.y > current.height + 50) resetLevel("啊啊啊...掉下悬崖了！");
+
+    levelCarrots.forEach(c => {
+        if (!c.collected && bunny.x < c.x + c.w && bunny.x + bunny.w > c.x && bunny.y < c.y + c.h && bunny.y + bunny.h > c.y) {
+            c.collected = true;
+            score += 100;
+        }
+    });
+
+    current.cannons.forEach(can => {
+        if (Date.now() - can.lastShot > 2000) {
+            bullets.push({x: can.x, y: can.y + 5, dx: can.dir * 2});
+            can.lastShot = Date.now();
+        }
+    });
+
+    bullets.forEach((b, index) => {
+        b.x += b.dx;
+        if (bunny.x < b.x + 10 && bunny.x + bunny.w > b.x && bunny.y < b.y + 10 && bunny.y + bunny.h > b.y) {
+            resetLevel("被炮弹击中了！");
+        }
+        if (b.x < 0 || b.x > current.width) bullets.splice(index, 1);
+    });
+
+    cameraX = bunny.x - canvas.width / 2;
+    if (cameraX < 0) cameraX = 0;
+    if (cameraX > current.width - canvas.width) cameraX = current.width - canvas.width;
+
+    if (levelCarrots.every(c => c.collected)) {
+        gameActive = false;
+        setTimeout(checkWin, 200);
+    }
+}
+
+function resetLevel(msg) {
+    alert(msg);
+    initLevel(currentLevel);
+}
+
+function checkWin() {
+    if (currentLevel < levelData.length - 1) {
+        if (confirm("恭喜你吃掉了所有胡萝卜！是否进入下一关？")) {
+            currentLevel++;
+            initLevel(currentLevel);
+        } else {
+            initLevel(currentLevel);
+        }
+    } else {
+        alert("太棒了！你通关了所有马里奥风格地图！总得分：" + score);
+        currentLevel = 0;
+        score = 0;
+        initLevel(currentLevel);
+    }
+}
+
+function draw() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.save();
+    ctx.translate(-cameraX, 0);
+
+    const current = levelData[currentLevel];
+
+    // 画平台
+    current.platforms.forEach(p => {
+        if (p.type === 'ground') {
+            ctx.fillStyle = "#C84C0C";
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.fillStyle = "#F8D8A0";
+            ctx.fillRect(p.x, p.y, p.w, 10);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(p.x, p.y, p.w, p.h);
+        }
+        else if (p.type === 'block') {
+            ctx.fillStyle = "#D84018";
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(p.x, p.y, p.w, p.h);
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y + p.h/2);
+            ctx.lineTo(p.x + p.w, p.y + p.h/2);
+            ctx.moveTo(p.x + p.w/2, p.y);
+            ctx.lineTo(p.x + p.w/2, p.y + p.h/2);
+            ctx.stroke();
+        }
+        else if (p.type === 'pipe') {
+            ctx.fillStyle = "#00A800";
+            ctx.fillRect(p.x, p.y, p.w, p.h);
+            ctx.fillStyle = "#00C000";
+            ctx.fillRect(p.x - 5, p.y, p.w + 10, 20);
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2;
+            ctx.strokeRect(p.x, p.y, p.w, p.h);
+            ctx.strokeRect(p.x - 5, p.y, p.w + 10, 20);
+        }
+    });
+
+    // 画陷阱
+    ctx.fillStyle = "#333";
+    current.traps.forEach(t => {
+        ctx.beginPath();
+        ctx.moveTo(t.x, t.y + t.h);
+        ctx.lineTo(t.x + t.w/2, t.y);
+        ctx.lineTo(t.x + t.w, t.y + t.h);
+        ctx.fill();
+    });
+
+    // 画大炮
+    ctx.fillStyle = "#000";
+    current.cannons.forEach(can => {
+        ctx.fillRect(can.x, can.y, 30, 30);
+        ctx.fillStyle = "#ccc";
+        ctx.fillRect(can.x + (can.dir === 1 ? 30 : -10), can.y + 10, 10, 10);
+        ctx.fillStyle = "#000";
+    });
+
+    // 画子弹
+    ctx.fillStyle = "#333";
+    bullets.forEach(b => {
+        ctx.beginPath();
+        ctx.arc(b.x, b.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+    });
+
+    // 画胡萝卜
+    ctx.font = "24px Arial";
+    levelCarrots.forEach(c => {
+        if (!c.collected) ctx.fillText("🥕", c.x, c.y + 20);
+    });
+
+    // 画兔子
+    ctx.save();
+    ctx.translate(bunny.x + bunny.w / 2, bunny.y + bunny.h / 2);
+    if (!bunny.facingLeft) {
+        ctx.scale(-1, 1);
+    }
+    ctx.font = "36px Arial";
+    ctx.fillText("🐇", -18, 12);
+    ctx.restore();
+
+    ctx.restore();
+
+    // 画UI
+    ctx.fillStyle = "#fff";
+    ctx.font = "bold 22px Arial";
+    ctx.shadowColor = "black";
+    ctx.shadowBlur = 4;
+    ctx.fillText("得分: " + score, 20, 40);
+    ctx.shadowBlur = 0;
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+initLevel(0);
+loop();
+</script>
+</body>
+</html>
