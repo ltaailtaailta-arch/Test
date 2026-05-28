@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Poppy Catcher · 接罂粟花</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(180deg, #87ceeb 0%, #b8e0f5 50%, #f4d35e 80%, #6fae5e 100%);
+    overflow: hidden;
+    user-select: none;
+  }
+  #game {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+  }
+  /* 远处的山 */
+  .hill {
+    position: absolute;
+    bottom: 18%;
+    width: 60%;
+    height: 30%;
+    background: radial-gradient(ellipse at center top, #8fbc8f 0%, #6b8e23 100%);
+    border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+    opacity: 0.55;
+  }
+  .hill.left  { left: -10%; }
+  .hill.right { right: -10%; height: 25%; }
+  /* 草地 */
+  .ground {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 18%;
+    background: linear-gradient(180deg, #6fae5e 0%, #4a7d3a 100%);
+  }
+  .ground::before {
+    content: "";
+    position: absolute;
+    top: -8px;
+    left: 0;
+    right: 0;
+    height: 16px;
+    background-image:
+      radial-gradient(circle at 20px 8px, #6fae5e 6px, transparent 7px),
+      radial-gradient(circle at 60px 8px, #6fae5e 7px, transparent 8px),
+      radial-gradient(circle at 100px 8px, #6fae5e 6px, transparent 7px);
+    background-size: 120px 16px;
+    background-repeat: repeat-x;
+  }
+  /* 太阳 */
+  .sun {
+    position: absolute;
+    top: 8%;
+    right: 10%;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: radial-gradient(circle, #fffae0 0%, #ffd23f 60%, #ffa726 100%);
+    box-shadow: 0 0 60px rgba(255, 210, 63, 0.6);
+    animation: pulse 3s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+  /* HUD */
+  #hud {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    right: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+    pointer-events: none;
+  }
+  .panel {
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(6px);
+    border-radius: 14px;
+    padding: 10px 18px;
+    font-weight: 700;
+    color: #3a2d1f;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    font-size: 18px;
+  }
+  .panel .label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    opacity: 0.6;
+    display: block;
+    font-weight: 600;
+  }
+  .lives { color: #d32f2f; letter-spacing: 2px; }
+  /* 篮子 */
+  #basket {
+    position: absolute;
+    bottom: 12%;
+    width: 110px;
+    height: 70px;
+    transform: translateX(-50%);
+    z-index: 5;
+    transition: transform 0.05s linear;
+    cursor: grab;
+  }
+  #basket .basket-body {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    height: 55px;
+    background: linear-gradient(180deg, #c68642 0%, #8b5a2b 100%);
+    border-radius: 8px 8px 50% 50% / 8px 8px 30% 30%;
+    box-shadow: inset 0 -8px 12px rgba(0, 0, 0, 0.25);
+  }
+  #basket .basket-body::before {
+    content: "";
+    position: absolute;
+    inset: 6px;
+    background-image:
+      repeating-linear-gradient(45deg, transparent 0 6px, rgba(0,0,0,0.15) 6px 7px),
+      repeating-linear-gradient(-45deg, transparent 0 6px, rgba(0,0,0,0.15) 6px 7px);
+    border-radius: inherit;
+  }
+  #basket .handle {
+    position: absolute;
+    top: -8px;
+    left: 10%;
+    right: 10%;
+    height: 30px;
+    border: 5px solid #6b3f1d;
+    border-bottom: none;
+    border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+  }
+  /* 飘落物 */
+  .item {
+    position: absolute;
+    width: 44px;
+    height: 44px;
+    z-index: 3;
+    will-change: transform;
+  }
+  .item svg { width: 100%; height: 100%; }
+  /* 弹幕文字 */
+  .float-text {
+    position: absolute;
+    font-weight: 800;
+    font-size: 22px;
+    pointer-events: none;
+    z-index: 6;
+    animation: floatUp 0.8s ease-out forwards;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  }
+  @keyframes floatUp {
+    0% { transform: translate(-50%, 0); opacity: 1; }
+    100% { transform: translate(-50%, -50px); opacity: 0; }
+  }
+  /* 屏幕 */
+  .screen {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(8px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 20;
+    color: #fff;
+    text-align: center;
+    padding: 24px;
+  }
+  .screen.hidden { display: none; }
+  .screen h1 {
+    font-size: clamp(36px, 8vw, 64px);
+    margin-bottom: 12px;
+    color: #ff5252;
+    text-shadow: 0 4px 0 #b71c1c, 0 8px 20px rgba(0,0,0,0.5);
+    letter-spacing: 2px;
+  }
+  .screen p { font-size: 18px; opacity: 0.9; max-width: 480px; line-height: 1.6; margin-bottom: 20px; }
+  .btn {
+    background: linear-gradient(180deg, #ff5252 0%, #c62828 100%);
+    color: white;
+    border: none;
+    padding: 14px 36px;
+    font-size: 20px;
+    font-weight: 700;
+    border-radius: 30px;
+    cursor: pointer;
+    box-shadow: 0 6px 0 #8b0000, 0 8px 20px rgba(0,0,0,0.4);
+    transition: transform 0.1s, box-shadow 0.1s;
+    margin-top: 12px;
+    letter-spacing: 1px;
+  }
+  .btn:hover { transform: translateY(2px); box-shadow: 0 4px 0 #8b0000, 0 6px 16px rgba(0,0,0,0.4); }
+  .btn:active { transform: translateY(6px); box-shadow: 0 0 0 #8b0000, 0 2px 8px rgba(0,0,0,0.4); }
+  .legend {
+    display: flex;
+    gap: 24px;
+    margin: 16px 0;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,0.1);
+    padding: 8px 14px;
+    border-radius: 12px;
+  }
+  .legend-item svg { width: 28px; height: 28px; }
+  .final-score {
+    font-size: clamp(48px, 12vw, 96px);
+    color: #ffd23f;
+    font-weight: 900;
+    text-shadow: 0 4px 0 #b8860b, 0 8px 24px rgba(0,0,0,0.5);
+    margin: 10px 0;
+  }
+</style>
+</head>
+<body>
+<div id="game">
+  <div class="sun"></div>
+  <div class="hill left"></div>
+  <div class="hill right"></div>
+  <div class="ground"></div>
+
+  <div id="hud">
+    <div class="panel"><span class="label">得分</span><span id="score">0</span></div>
+    <div class="panel"><span class="label">关卡</span><span id="level">1</span></div>
+    <div class="panel"><span class="label">生命</span><span class="lives" id="lives">♥♥♥</span></div>
+  </div>
+
+  <div id="basket">
+    <div class="handle"></div>
+    <div class="basket-body"></div>
+  </div>
+
+  <!-- 开始界面 -->
+  <div class="screen" id="start-screen">
+    <h1>POPPY CATCHER</h1>
+    <p>用篮子接住飘落的罂粟花！移动鼠标 / 手指滑动 / 方向键 ← → 控制篮子。</p>
+    <div class="legend">
+      <div class="legend-item">
+        <svg viewBox="0 0 50 50"><g><circle cx="25" cy="25" r="6" fill="#2d1810"/><path d="M25 8 Q15 14 12 22 Q18 20 25 22 Z" fill="#e53935"/><path d="M25 8 Q35 14 38 22 Q32 20 25 22 Z" fill="#d32f2f"/><path d="M12 22 Q10 32 18 38 Q22 30 25 25 Z" fill="#ef5350"/><path d="M38 22 Q40 32 32 38 Q28 30 25 25 Z" fill="#c62828"/><path d="M18 38 Q25 42 32 38 Q28 32 25 30 Z" fill="#e53935"/></g></svg>
+        <span>+10 红罂粟</span>
+      </div>
+      <div class="legend-item">
+        <svg viewBox="0 0 50 50"><g><circle cx="25" cy="25" r="6" fill="#2d1810"/><path d="M25 8 Q15 14 12 22 Q18 20 25 22 Z" fill="#ffd23f"/><path d="M25 8 Q35 14 38 22 Q32 20 25 22 Z" fill="#ffb300"/><path d="M12 22 Q10 32 18 38 Q22 30 25 25 Z" fill="#ffc107"/><path d="M38 22 Q40 32 32 38 Q28 30 25 25 Z" fill="#ff9800"/><path d="M18 38 Q25 42 32 38 Q28 32 25 30 Z" fill="#ffd23f"/></g></svg>
+        <span>+50 金罂粟</span>
+      </div>
+      <div class="legend-item">
+        <svg viewBox="0 0 50 50"><g><path d="M10 25 L25 10 L40 25 L25 40 Z" fill="#37474f"/><path d="M20 20 L30 30 M30 20 L20 30" stroke="#cfd8dc" stroke-width="3"/></g></svg>
+        <span>−1 ♥ 杂草</span>
+      </div>
+    </div>
+    <button class="btn" id="start-btn">开 始 游 戏</button>
+  </div>
+
+  <!-- 结束界面 -->
+  <div class="screen hidden" id="end-screen">
+    <h1>游戏结束</h1>
+    <p>你收集到的罂粟花</p>
+    <div class="final-score" id="final-score">0</div>
+    <p id="end-msg">再接再厉！</p>
+    <button class="btn" id="restart-btn">再 玩 一 次</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const game = document.getElementById('game');
+  const basket = document.getElementById('basket');
+  const scoreEl = document.getElementById('score');
+  const levelEl = document.getElementById('level');
+  const livesEl = document.getElementById('lives');
+  const startScreen = document.getElementById('start-screen');
+  const endScreen = document.getElementById('end-screen');
+  const finalScoreEl = document.getElementById('final-score');
+  const endMsg = document.getElementById('end-msg');
+
+  const state = {
+    running: false,
+    score: 0,
+    lives: 3,
+    level: 1,
+    basketX: window.innerWidth / 2,
+    items: [],
+    lastSpawn: 0,
+    spawnInterval: 900,
+    fallSpeed: 180, // px/s
+    keyLeft: false,
+    keyRight: false,
+    lastFrame: 0,
+  };
+
+  // SVG 工厂
+  function makePoppy(color) {
+    const colors = color === 'gold'
+      ? ['#ffd23f', '#ffb300', '#ffc107', '#ff9800']
+      : ['#e53935', '#d32f2f', '#ef5350', '#c62828'];
+    return `<svg viewBox="0 0 50 50">
+      <g>
+        <path d="M25 8 Q15 14 12 22 Q18 20 25 22 Z" fill="${colors[0]}"/>
+        <path d="M25 8 Q35 14 38 22 Q32 20 25 22 Z" fill="${colors[1]}"/>
+        <path d="M12 22 Q10 32 18 38 Q22 30 25 25 Z" fill="${colors[2]}"/>
+        <path d="M38 22 Q40 32 32 38 Q28 30 25 25 Z" fill="${colors[3]}"/>
+        <path d="M18 38 Q25 42 32 38 Q28 32 25 30 Z" fill="${colors[0]}"/>
+        <circle cx="25" cy="25" r="6" fill="#2d1810"/>
+        <circle cx="22" cy="23" r="1.5" fill="#5d4037"/>
+        <circle cx="27" cy="26" r="1.5" fill="#5d4037"/>
+      </g>
+    </svg>`;
+  }
+  function makeWeed() {
+    return `<svg viewBox="0 0 50 50">
+      <g>
+        <path d="M10 25 L25 8 L40 25 L25 42 Z" fill="#37474f" stroke="#1c2833" stroke-width="2"/>
+        <path d="M18 18 L32 32 M32 18 L18 32" stroke="#cfd8dc" stroke-width="3" stroke-linecap="round"/>
+        <circle cx="25" cy="25" r="3" fill="#cfd8dc"/>
+      </g>
+    </svg>`;
+  }
+
+  function spawnItem() {
+    const roll = Math.random();
+    let kind, value, html, rot;
+    if (roll < 0.15) { kind = 'gold'; value = 50; html = makePoppy('gold'); }
+    else if (roll < 0.40) { kind = 'weed'; value = -1; html = makeWeed(); }
+    else { kind = 'red'; value = 10; html = makePoppy('red'); }
+
+    const el = document.createElement('div');
+    el.className = 'item';
+    el.innerHTML = html;
+    const x = 30 + Math.random() * (window.innerWidth - 60);
+    el.style.left = x + 'px';
+    el.style.top = '-50px';
+    rot = (Math.random() - 0.5) * 60;
+    el.style.transform = `rotate(${rot}deg)`;
+    game.appendChild(el);
+
+    state.items.push({
+      el,
+      x,
+      y: -50,
+      kind,
+      value,
+      rot,
+      rotSpeed: (Math.random() - 0.5) * 120,
+      speed: state.fallSpeed * (0.8 + Math.random() * 0.5),
+    });
+  }
+
+  function showFloatText(x, y, text, color) {
+    const el = document.createElement('div');
+    el.className = 'float-text';
+    el.textContent = text;
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    el.style.color = color;
+    game.appendChild(el);
+    setTimeout(() => el.remove(), 800);
+  }
+
+  function updateHUD() {
+    scoreEl.textContent = state.score;
+    levelEl.textContent = state.level;
+    livesEl.textContent = '♥'.repeat(Math.max(0, state.lives)) || '—';
+  }
+
+  function moveBasket(x) {
+    const halfWidth = basket.offsetWidth / 2;
+    state.basketX = Math.max(halfWidth, Math.min(window.innerWidth - halfWidth, x));
+    basket.style.left = state.basketX + 'px';
+  }
+
+  function loop(ts) {
+    if (!state.running) return;
+    if (!state.lastFrame) state.lastFrame = ts;
+    const dt = Math.min(50, ts - state.lastFrame) / 1000;
+    state.lastFrame = ts;
+
+    // 键盘移动
+    if (state.keyLeft) moveBasket(state.basketX - 500 * dt);
+    if (state.keyRight) moveBasket(state.basketX + 500 * dt);
+
+    // 生成
+    if (ts - state.lastSpawn > state.spawnInterval) {
+      spawnItem();
+      state.lastSpawn = ts;
+    }
+
+    // 篮子位置（顶部碰撞线）
+    const basketRect = basket.getBoundingClientRect();
+    const catchLineY = basketRect.top + 10;
+    const catchLeft = basketRect.left + 8;
+    const catchRight = basketRect.right - 8;
+
+    // 更新飘落物
+    for (let i = state.items.length - 1; i >= 0; i--) {
+      const it = state.items[i];
+      it.y += it.speed * dt;
+      it.rot += it.rotSpeed * dt;
+      it.el.style.top = it.y + 'px';
+      it.el.style.transform = `rotate(${it.rot}deg)`;
+
+      const centerX = it.x + 22;
+      const bottomY = it.y + 44;
+
+      // 是否被接到
+      if (bottomY >= catchLineY && bottomY <= catchLineY + 30 &&
+          centerX >= catchLeft && centerX <= catchRight) {
+        if (it.kind === 'weed') {
+          state.lives--;
+          showFloatText(centerX, catchLineY - 10, '−1 ♥', '#ff5252');
+          shakeScreen();
+        } else {
+          state.score += it.value;
+          showFloatText(centerX, catchLineY - 10, '+' + it.value, it.kind === 'gold' ? '#ffd23f' : '#ff8a80');
+        }
+        it.el.remove();
+        state.items.splice(i, 1);
+        continue;
+      }
+
+      // 落到地面
+      if (it.y > window.innerHeight - window.innerHeight * 0.18) {
+        if (it.kind !== 'weed') {
+          // 漏掉花朵：闪一下不扣命
+          showFloatText(centerX, window.innerHeight * 0.82, '错过！', '#fff');
+        }
+        it.el.remove();
+        state.items.splice(i, 1);
+      }
+    }
+
+    // 升级
+    const targetLevel = 1 + Math.floor(state.score / 150);
+    if (targetLevel > state.level) {
+      state.level = targetLevel;
+      state.spawnInterval = Math.max(280, 900 - (state.level - 1) * 70);
+      state.fallSpeed = 180 + (state.level - 1) * 28;
+      showFloatText(window.innerWidth / 2, window.innerHeight / 2, '关卡 ' + state.level + '!', '#ffd23f');
+    }
+
+    updateHUD();
+
+    if (state.lives <= 0) {
+      endGame();
+      return;
+    }
+
+    requestAnimationFrame(loop);
+  }
+
+  function shakeScreen() {
+    game.animate(
+      [{ transform: 'translate(0,0)' }, { transform: 'translate(-8px, 4px)' }, { transform: 'translate(8px, -4px)' }, { transform: 'translate(0,0)' }],
+      { duration: 200 }
+    );
+  }
+
+  function startGame() {
+    state.running = true;
+    state.score = 0;
+    state.lives = 3;
+    state.level = 1;
+    state.spawnInterval = 900;
+    state.fallSpeed = 180;
+    state.items.forEach(it => it.el.remove());
+    state.items = [];
+    state.lastSpawn = 0;
+    state.lastFrame = 0;
+    startScreen.classList.add('hidden');
+    endScreen.classList.add('hidden');
+    updateHUD();
+    requestAnimationFrame(loop);
+  }
+
+  function endGame() {
+    state.running = false;
+    finalScoreEl.textContent = state.score;
+    if (state.score >= 500) endMsg.textContent = '罂粟大师！🏆';
+    else if (state.score >= 200) endMsg.textContent = '不错的收成！';
+    else if (state.score >= 50) endMsg.textContent = '继续练习吧！';
+    else endMsg.textContent = '再接再厉！';
+    endScreen.classList.remove('hidden');
+  }
+
+  // 输入
+  document.addEventListener('mousemove', e => state.running && moveBasket(e.clientX));
+  document.addEventListener('touchmove', e => {
+    if (state.running && e.touches[0]) moveBasket(e.touches[0].clientX);
+  }, { passive: true });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') state.keyLeft = true;
+    if (e.key === 'ArrowRight') state.keyRight = true;
+  });
+  document.addEventListener('keyup', e => {
+    if (e.key === 'ArrowLeft') state.keyLeft = false;
+    if (e.key === 'ArrowRight') state.keyRight = false;
+  });
+  window.addEventListener('resize', () => moveBasket(state.basketX));
+
+  document.getElementById('start-btn').addEventListener('click', startGame);
+  document.getElementById('restart-btn').addEventListener('click', startGame);
+
+  // 初始化篮子位置
+  moveBasket(window.innerWidth / 2);
+})();
+</script>
+</body>
+</html>
